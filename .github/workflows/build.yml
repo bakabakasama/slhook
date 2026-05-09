@@ -1,0 +1,37 @@
+name: Build SLHook
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive # Clone MinHook
+
+    - name: Install MinGW 32-bit Toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-mingw-w64-i686 g++-mingw-w64-i686
+
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_TOOLCHAIN_FILE=../mingw32.cmake -DCMAKE_BUILD_TYPE=Release ..
+
+    - name: Build SLHook Artifact
+      run: cmake --build build
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: pso2h-dll
+        path: bin/pso2h.dll
