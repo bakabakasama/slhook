@@ -178,9 +178,11 @@ void InitializeNetworkHooks() {
 
     // 3. Winsock DNS Spoof Hook
     HMODULE hWinsock = GetModuleHandleA("ws2_32.dll");
-    if (hWinsock) {
+    if (hWinsock)
+    {
         void* pGetAddrInfo = (void*)GetProcAddress(hWinsock, "getaddrinfo");
-        if (pGetAddrInfo) {
+        if (pGetAddrInfo)
+        {
             MH_CreateHook(pGetAddrInfo, (LPVOID)&DetourWinsockGetAddrInfo, reinterpret_cast<LPVOID*>(&oWinsockGetAddrInfo));
         }
     }
