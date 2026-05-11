@@ -6,10 +6,12 @@
 #include <cstring>
 #include <windows.h>
 #include "logger.h"
+#include "network.h"
 
 // Global variables
 std::map<std::string, std::string> g_ConfigMap;
 std::string g_ProxyIP = "127.0.0.1"; // Fallback IP
+std::string g_ProxyHostname = "127.0.0.1"; // Fallback IP
 
 // Helper function to trim whitespace when reading
 void Trim(std::string& s)
@@ -118,8 +120,9 @@ void LoadProxyOverride()
         Trim(line);
         if (!line.empty()) 
         {
-            // Store it!
-            g_ProxyIP = line;
+            // Store it
+            g_ProxyHostname = line;
+            g_ProxyIP = ResolveHostnameToIP(line);
             Log("[Loader] Proxy Override: Loaded Proxy IP from proxy.txt -> " + g_ProxyIP);
         }
     }

@@ -6,9 +6,68 @@
 #include "logger.h"
 #include "network.h"
 
+// Certain plugins absolutely REQUIRE PSO2Hook::Packet(). We can only get so far away...
+namespace PSO2Hook
+{
+#pragma pack(push, 1)
+    struct PacketHeader
+    {
+        uint32_t size;
+        uint8_t type;
+        uint8_t subtype;
+        uint8_t flags;
+        uint8_t padding;
+    };
+
+#pragma pack(pop)
+
+    // Export it
+    class Packet
+    {
+    public:
+        Packet(PacketHeader *h);
+        Packet(uint8_t **packet); // Double pointers, lame
+        void* *ref;
+        PacketHeader *header;
+        uint16_t pktID;
+        uint32_t dataSize;
+        uint8_t *data;
+        ~Packet();
+    };
+
+    Packet::Packet(PacketHeader *h)
+    {
+        ref = nullptr;
+        header = h;
+        pktID = (h->subtype << 8) | h->type;
+        dataSize = h->size - 8;
+        data = (uint8_t*)h + 8;
+    }
+
+    Packet::Packet(uint8_t **packet)
+    {
+        ref = (void**)packet; // Another one
+        uint8_t* rawBuffer = *packet;
+        header = (PacketHeader*)rawBuffer;
+        pktID = (header->subtype << 8) | header->type;
+        dataSize = header->size - 8;
+        data = rawBuffer + 8;
+    }
+
+    Packet::~Packet()
+    {
+        // The proxy handles the actual memory cleanup, so this is just a stub
+    }
+}
+
 // Note that we wrap these in extern C as to not mangle the export names
 extern "C"
 {
+    // Wow this is really cursed. Thank you MSVC for mangling exports.
+    __declspec(dllexport) void __thiscall FakePacketDestructor(void* pThis) {
+        return;
+    }
+
     // ---------------------------------------------------------
     // Unimplemented stubs
     // ---------------------------------------------------------
@@ -58,7 +117,7 @@ extern "C"
     __declspec(dllexport) int pso2hRegisterHandlerSend(void* callback, uint8_t mainId, uint8_t subId, const char* handlerName)
     {
         // Build packet by bitshifting mainId and putting subId in it's place.
-        uint16_t packetId = (mainId << 8) + subId;
+        uint16_t packetId = (subId << 8) + mainId;
 
         // Store handler name for logging
         std::string name = handlerName ? handlerName : "Unknown";
@@ -79,7 +138,7 @@ extern "C"
     // Same function as above, ad hominen
     __declspec(dllexport) int pso2hRegisterHandlerRecv(void* callback, uint8_t mainId, uint8_t subId, const char* handlerName)
     {
-        uint16_t packetId = (mainId << 8) + subId;
+        uint16_t packetId = (subId << 8) + mainId;
 
         std::string name = handlerName ? handlerName : "Unknown";
         char buf[256];

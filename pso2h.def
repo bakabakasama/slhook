@@ -1,0 +1,3 @@
+EXPORTS
+    ; This is absolutely fucking absurd.
+    ??1Packet@PSO2Hook@@QAE@XZ=FakePacketDestructor

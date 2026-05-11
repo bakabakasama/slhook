@@ -21,7 +21,7 @@ set(MINHOOK_SRCS
 # Target: pso2h.dll
 # ---------------------------------------------------------
 # Make a shared library (.dll)
-add_library(pso2h SHARED ${CXX_SRCS} ${MINHOOK_SRCS})
+add_library(pso2h SHARED ${CXX_SRCS} ${MINHOOK_SRCS} pso2h.def)
 
 # Get rid of "lib" prefix
 set_target_properties(pso2h PROPERTIES PREFIX "")
