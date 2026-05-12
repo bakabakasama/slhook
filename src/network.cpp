@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <cstdio>
+#include <setjmp.h>
 #include "MinHook.h"
 #include "network.h"
 #include "logger.h"
@@ -32,6 +33,56 @@ struct PSO2Packet {
     uint8_t padding;    
 };
 #pragma pack(pop)
+
+// ---------------------------------------------------------
+// Crash handler (this is literally pso2itemtranslator's fault)
+// ---------------------------------------------------------
+LONG WINAPI PluginCrashFilter(EXCEPTION_POINTERS *ep) {
+    // Intercept Access Violations (Code 0xC0000005)
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+        
+        uint8_t* eip = (uint8_t*)ep->ContextRecord->Eip;
+        if (eip)
+        {
+            // Crash 1: "movb (%esi), %al" -> Machine Code: 8A 06 (2 bytes)
+            if (eip[0] == 0x8A && eip[1] == 0x06)
+            {
+
+                // Advance the Instruction Pointer by 2 bytes to skip the faulting instruction
+                ep->ContextRecord->Eip += 2;
+
+                // Force the AL register to 0x00. 
+                // This tricks the plugin into thinking it hit the end of the string!
+                ep->ContextRecord->Eax &= 0xFFFFFF00;
+
+                // 3. Tell Windows/Wine to seamlessly resume execution as if nothing happened!
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+
+            // Crash 2: "movb -8(%ecx, %eax), %al" -> Machine Code: 8A 44 xx F8 (4 bytes)
+            // eip[0] == 8A (mov r8, r/m8)
+            // eip[1] == 44 (ModR/M byte for SIB + disp8)
+            // eip[3] == F8 (The -8 displacement)
+            if (eip[0] == 0x8A && eip[1] == 0x44 && eip[3] == 0xF8)
+            {
+                ep->ContextRecord->Eip += 4; // Skip the 4-byte instruction
+                ep->ContextRecord->Eax &= 0xFFFFFF00; // Force AL to 0x00
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+
+            // Crash 3: "rep movsb" -> Machine Code: F3 A4 (2 bytes)
+            // The plugin is trying to copy a garbage length. 
+            if (eip[0] == 0xF3 && eip[1] == 0xA4) {
+                ep->ContextRecord->Eip += 2; // Skip the instruction
+                ep->ContextRecord->Ecx = 0;  // Trick the CPU into thinking the copy finished
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+    }
+    
+    // If it's a different kind of crash, fallback to the standard abort behavior
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 // ---------------------------------------------------------
 // DNS Helper
@@ -74,51 +125,69 @@ ENGINE_SEND oSend = nullptr;
 void __thiscall DetourRecv(void* pThis, char* rawBuffer)
 {
     // Process the data BEFORE the engine consumes/frees it
-    if (rawBuffer && !IsBadReadPtr(rawBuffer, 8))
+    if (rawBuffer)
     {
         
         // Read directly from the raw memory array
         uint32_t rawTotalSize = *(uint32_t*)(rawBuffer);
-        uint16_t packetId = *(uint16_t*)(rawBuffer + 4);
+        if (rawTotalSize >= 8 && rawTotalSize <= 0xFFFF) 
+        {
+            uint16_t packetId = *(uint16_t*)(rawBuffer + 4);
 
-        // Sanity Filter (Header must be at least 8 bytes)
-        //if (rawTotalSize >= 8 && rawTotalSize < 100000) {
-            uint32_t safePayloadSize = rawTotalSize - 8;
+            // Sanity Filter (Header must be at least 8 bytes)
+            //if (rawTotalSize >= 8 && rawTotalSize < 100000) {
+                //uint32_t safePayloadSize = rawTotalSize - 8;
 
-            // Hex Dumper (Reading the first 8 bytes of the raw buffer)
-            uint8_t* b = (uint8_t*)rawBuffer;
-            //char logBuf[512];
-            //snprintf(logBuf, sizeof(logBuf), "[PROXY-RECV] ID: %04X | Size: %u | Hex: %02X %02X %02X %02X %02X %02X %02X %02X", 
-            //         packetId, rawTotalSize, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);
-            //Log(logBuf);
+                // Hex Dumper (Reading the first 8 bytes of the raw buffer)
+                //uint8_t* b = (uint8_t*)rawBuffer;
+                //char logBuf[512];
+                //snprintf(logBuf, sizeof(logBuf), "[PROXY-RECV] ID: %04X | Size: %u | Hex: %02X %02X %02X %02X %02X %02X %02X %02X", 
+                //         packetId, rawTotalSize, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);
+                //Log(logBuf);
 
-            std::lock_guard<std::recursive_mutex> lock(g_NetworkMutex);
-            
-            auto it = g_RecvHandlers.find(packetId);
-            if (it != g_RecvHandlers.end())
-            {
-                for (auto& handler : it->second)
+                std::lock_guard<std::recursive_mutex> lock(g_NetworkMutex);
+
+                auto it = g_RecvHandlers.find(packetId);
+                if (it != g_RecvHandlers.end())
                 {
-                    uint8_t* safeCopy = new uint8_t[rawTotalSize];
-                    memcpy(safeCopy, rawBuffer, rawTotalSize);
+                    for (auto& handler : it->second)
+                    {
+                        //uint8_t* safeCopy = new uint8_t[rawTotalSize];
+                        //memcpy(safeCopy, rawBuffer, rawTotalSize);
 
-                    auto cb = reinterpret_cast<pktHandler>(handler.callback);
-                    cb(safeCopy);
+                        auto cb = reinterpret_cast<pktHandler>(handler.callback);
 
-                    delete[] safeCopy;
+                        // Arm the crash handler
+                        PVOID vehHandle = AddVectoredExceptionHandler(1, PluginCrashFilter);
+                        cb((uint8_t*)rawBuffer);
+                        if (vehHandle)
+                        {
+                            pso2hLogLine("[Proxy-VEH] FATAL: Swallowed non-string crash in plugin! *shakes fists*");
+                            RemoveVectoredExceptionHandler(vehHandle);
+                        }
+                        //delete[] safeCopy;
+                    }
                 }
-            }
+            //}
+        }
+        
 
-            for (auto& handler : g_RecvAllHandlers)
+        for (auto& handler : g_RecvAllHandlers)
+        {
+            //uint8_t* safeCopy = new uint8_t[rawTotalSize];
+            //memcpy(safeCopy, rawBuffer, rawTotalSize);
+
+            PVOID vehHandle = AddVectoredExceptionHandler(1, PluginCrashFilter);
+            auto cb = reinterpret_cast<pktHandler>(handler.callback);
+            cb((uint8_t*)rawBuffer);
+            if (vehHandle)
             {
-                uint8_t* safeCopy = new uint8_t[rawTotalSize];
-                memcpy(safeCopy, rawBuffer, rawTotalSize);
-
-                auto cb = reinterpret_cast<pktHandler>(handler.callback);
-                cb(safeCopy);
-
-                delete[] safeCopy;
+                    pso2hLogLine("[Proxy-VEH] FATAL: Swallowed non-string crash in plugin! *shakes fists*");
+                    RemoveVectoredExceptionHandler(vehHandle);
             }
+
+            //delete[] safeCopy;
+        }
         //}
     }
     
@@ -128,15 +197,15 @@ void __thiscall DetourRecv(void* pThis, char* rawBuffer)
 
 void __thiscall DetourSend(void* pThis, char* rawBuffer)
 {
-    if (rawBuffer && !IsBadReadPtr(rawBuffer, 8))
+    if (rawBuffer)
     {
         
-        uint32_t rawTotalSize = *(uint32_t*)(rawBuffer);
+        //uint32_t rawTotalSize = *(uint32_t*)(rawBuffer);
         uint16_t packetId = *(uint16_t*)(rawBuffer + 4);
-        Packet pkt(rawBuffer);
+        //Packet pkt(rawBuffer);
 
         //if (rawTotalSize >= 8 && rawTotalSize < 100000) {
-            uint32_t safePayloadSize = rawTotalSize - 8;
+            //uint32_t safePayloadSize = rawTotalSize - 8;
 
             //char logBuf[512];
             //snprintf(logBuf, sizeof(logBuf), "[PROXY-SEND] ID: %04X | Size: %u", packetId, rawTotalSize);
@@ -149,25 +218,25 @@ void __thiscall DetourSend(void* pThis, char* rawBuffer)
             {
                 for (auto& handler : it->second)
                 {
-                    uint8_t* safeCopy = new uint8_t[rawTotalSize];
-                    memcpy(safeCopy, rawBuffer, rawTotalSize);
+                    //uint8_t* safeCopy = new uint8_t[rawTotalSize];
+                    //memcpy(safeCopy, rawBuffer, rawTotalSize);
 
                     auto cb = reinterpret_cast<pktHandler>(handler.callback);
-                    cb(safeCopy);
+                    cb((uint8_t*)rawBuffer);
 
-                    delete[] safeCopy;
+                    //delete[] safeCopy;
                 }
             }
 
             for (auto& handler : g_SendAllHandlers)
             {
-                uint8_t* safeCopy = new uint8_t[rawTotalSize];
-                memcpy(safeCopy, rawBuffer, rawTotalSize);
+                //uint8_t* safeCopy = new uint8_t[rawTotalSize];
+                //memcpy(safeCopy, rawBuffer, rawTotalSize);
 
                 auto cb = reinterpret_cast<pktHandler>(handler.callback);
-                cb(safeCopy);
+                cb((uint8_t*)rawBuffer);
 
-                delete[] safeCopy;
+                //delete[] safeCopy;
             }
         //}
     }
