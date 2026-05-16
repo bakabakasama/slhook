@@ -35,6 +35,15 @@ target_include_directories(pso2h PRIVATE external/minhook/include)
 # Add Windows library links
 target_link_libraries(pso2h PRIVATE ws2_32 shlwapi psapi)
 
+# Apply compile-time flags
+target_compile_options(pso2h PRIVATE 
+    -Wall 
+    -O2 
+    -ffunction-sections 
+    -fdata-sections 
+    -flto
+)
+
 # Apply linker flags to fix standard call
 target_link_options(pso2h PRIVATE 
     -static 
@@ -42,7 +51,7 @@ target_link_options(pso2h PRIVATE
     -static-libstdc++ 
     -Wl,--enable-stdcall-fixup 
     -Wl,--kill-at
+    -Wl,--gc-sections
+    -flto
+    -s
 )
-
-# Warnings
-target_compile_options(pso2h PRIVATE -Wall)

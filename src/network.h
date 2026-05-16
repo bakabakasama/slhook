@@ -37,14 +37,16 @@ public:
     uint32_t dataSize;    // +0x0C
     uint8_t* data;        // +0x10
 
-    Packet(char* rawBuffer) {
+    Packet(uint8_t** packet)
+    {
+        ref = reinterpret_cast<void*>(packet);
+        uint8_t* rawBuffer = *packet;
         header = reinterpret_cast<PacketHeader*>(rawBuffer);
         // ID is constructed as (Subtype << 8) | Type to match 
         // the Little-Endian memory read (e.g., 0x5204)
         pktID = (header->subtype << 8) | header->type; 
         dataSize = header->size - 8;
-        data = reinterpret_cast<uint8_t*>(rawBuffer + 8);
-        ref = nullptr;
+        data = rawBuffer + 8;
     }
 };
 
