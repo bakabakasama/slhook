@@ -16,6 +16,12 @@ struct PacketHeader {
 };
 #pragma pack(pop)
 
+// Packet snapshot
+struct ProxyPacket {
+    uint16_t id;
+    std::vector<uint8_t> data;
+};
+
 // Structure to hold the plugin's callback pointer and its name for logging
 struct PacketHandler {
     void* callback;
@@ -42,8 +48,8 @@ public:
     }
 };
 
-// This should be the signature needed
-typedef void (__cdecl *pktHandler)(uint8_t* packet);
+// Revert to __cdecl to match the original plugin specifications
+typedef void (__cdecl *pktHandler)(uint8_t** packet);
 
 // Global registries
 extern std::map<uint16_t, std::vector<PacketHandler>> g_SendHandlers;
