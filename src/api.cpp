@@ -5,6 +5,9 @@
 #include <string>
 #include "logger.h"
 #include "network.h"
+#include "lua.h"
+#include "scanner.h"
+#include <thread>
 
 // Certain plugins absolutely REQUIRE PSO2Hook::Packet(). We can only get so far away...
 namespace PSO2Hook
@@ -78,22 +81,24 @@ extern "C"
     __declspec(dllexport) int pso2hCheckVersion() { return 1; }
 
     // ---------------------------------------------------------
-    // Lua Engine stub
+    // Lua Engine hook
     // ---------------------------------------------------------
-    // This one probably needs some explaining. DoLua was originally
-    // used by TelepipeProxy specifically to intercept the networking
-    // within the engine, which was a good solution when GameGuard
-    // was a problem. Since GameGuard is gone, we don't actually need
-    // this one anymore and just use MinHook to redirect the engine.
     __declspec(dllexport) void __cdecl pso2hDoLua(const char* script)
     {
-    // if (script) {
-    //      char buf[1024];
-    //     snprintf(buf, sizeof(buf), "[API-LUA-INTERCEPT] Telepipe sent script:\n%s", script);
-    //      Log(buf);
-    //   } else {
-    //         Log("[API-LUA-INTERCEPT] Telepipe sent a NULL script.");
-    //   }
+       if (!script) {
+            Log("[API-LUA] Received a NULL script.");
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(g_LuaMutex);
+        g_LuaQueue.push(script);
+        
+        if (g_LuaEvent) {
+            SetEvent(g_LuaEvent);
+            Log(std::string("[API-LUA] Script queued for execution:\n") + script);
+        } else {
+            Log("[API-LUA] WARNING: Lua Event not yet created! Script queued but may not execute immediately.");
+        }
     }
 
     // ---------------------------------------------------------

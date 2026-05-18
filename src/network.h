@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <queue>
 
 // Definitions for packets (I have no idea if these are right but)
 #pragma pack(push, 1)

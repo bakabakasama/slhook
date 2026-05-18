@@ -52,8 +52,6 @@ std::string GetCallerPluginName(void* callerAddress) {
 void Log(const std::string& message) {
     std::lock_guard<std::mutex> lock(g_LogMutex);
     
-    printf("[Loader] %s\n", message.c_str());
-    
     FILE* file = fopen("pso2h.log", "a"); // Unifying to pso2h.log
     if (file) {
         fprintf(file, "[Loader] %s\n", message.c_str());
@@ -79,8 +77,6 @@ extern "C" __declspec(dllexport) void pso2hLogLine(const char* format, ...) {
     
     // 4. Thread-safe write to the unified log
     std::lock_guard<std::mutex> lock(g_LogMutex);
-    
-    printf("[%s] %s\n", pluginName.c_str(), buffer);
     
     FILE* file = fopen("pso2h.log", "a");
     if (file) {

@@ -3,6 +3,7 @@
 #include "loader.h"
 #include "network.h"
 #include "config.h"
+#include "lua.h"
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
@@ -20,6 +21,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
             // Initialize our network hooks
             InitializeNetworkHooks();
+            
+            // Initialize our Lua hooks
+            InitializeLuaHooks();
             
             break;
         }

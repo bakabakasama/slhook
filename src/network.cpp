@@ -275,23 +275,23 @@ void InitializeNetworkHooks() {
         Log("CRITICAL: Failed to find Send/Recv Engine patterns.");
     }
 
-    // 3. Winsock Spoof
-    HMODULE hWinsock = GetModuleHandleA("ws2_32.dll");
+    // // 3. Winsock Spoof
+    // HMODULE hWinsock = GetModuleHandleA("ws2_32.dll");
 
-    // There's a chance it might not be loaded at this point. Pre-load the DLL
-    if (!hWinsock) hWinsock = LoadLibraryA("ws2_32.dll");
+    // // There's a chance it might not be loaded at this point. Pre-load the DLL
+    // if (!hWinsock) hWinsock = LoadLibraryA("ws2_32.dll");
 
-    // We're loaded. Hook the thingy
-    if (hWinsock)
-    {
-        void* pGetAddrInfo = (void*)GetProcAddress(hWinsock, "getaddrinfo");
-        if (pGetAddrInfo)
-        {
-            MH_CreateHook(pGetAddrInfo, (LPVOID)&DetourWinsockGetAddrInfo, reinterpret_cast<LPVOID*>(&oWinsockGetAddrInfo));
-        }
-    } else {
-        Log("[HOOKS] WARNING: Could not load ws2_32.dll for hooking!");
-    }
+    // // We're loaded. Hook the thingy
+    // if (hWinsock)
+    // {
+    //     void* pGetAddrInfo = (void*)GetProcAddress(hWinsock, "getaddrinfo");
+    //     if (pGetAddrInfo)
+    //     {
+    //         MH_CreateHook(pGetAddrInfo, (LPVOID)&DetourWinsockGetAddrInfo, reinterpret_cast<LPVOID*>(&oWinsockGetAddrInfo));
+    //     }
+    // } else {
+    //     Log("[HOOKS] WARNING: Could not load ws2_32.dll for hooking!");
+    // }
 
     // 4. WinHTTP Spoof
     HMODULE hWinHttp = GetModuleHandleA("winhttp.dll");
